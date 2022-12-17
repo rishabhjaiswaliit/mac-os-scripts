@@ -1,0 +1,70 @@
+tinyapps.org / blog
+
+macOS: Mount exFAT partitions created in Windows #
+0. Issue
+An 8TB USB HDD formatted as exFAT in Windows 10 (using the default settings) would not mount in macOS 12.
+
+Disk Utility showed the exFAT partition greyed out. Right clicking it and selecting "Mount" returned:
+
+Could not mount “8TB”. (com.apple.DiskManagement.disenter error 49223.)
+
+Terminal fared no better:
+
+   % sudo mount -t exfat /dev/disk2s2 ~/mnt
+   mount_exfat: /dev/disk2s2 on /Users/user/mnt: Invalid argument
+   mount: /Users/user/mnt failed with 71
+1. Cause
+Seagate's Disk Utility Errors and Questions for macOS 10.11 and higher explains:
+
+Error Message - com.apple.DiskManagement.disenter error 49223
+This error message has been seen with drives formatted ExFAT. When using a drive between macOS and Windows, drives should always be formatted on macOS because not all Windows allocation unit sizes (block sizes) are supported by macOS. An unsupported allocation unit size will keep the drive from mounting. This error will be displayed when trying to mount the drive manually with Disk Utility. If you are using this drive between macOS and Windows then back up any important data on the drive and reformat the drive ExFAT on macOS.
+
+2. Solution
+Rather than reformatting, exFAT for FUSE (which supports clusters up to 32 MB) was used to successfully mount the partition in macOS:
+
+% sudo /usr/local/sbin/mount.exfat-fuse /dev/disk2s2 ~/mnt
+
+3. Prevention
+Finding only incomplete or incorrect guidance online, I decided to test every allocation unit size displayed in the Windows format GUI:
+
+2048 bytes
+4096 bytes
+8192 bytes
+16 kilobytes
+32 kilobytes
+64 kilobytes
+128 kilobytes
+256 kilobytes
+512 kilobytes
+1024 kilobytes
+2048 kilobytes
+4096 kilobytes
+8192 kilobytes
+16384 kilobytes
+32768 kilobytes
+
+(as well as the two smaller options, 512 and 1024 bytes, offered in the CLI), prepping partitions via the command prompt, e.g., C:\>format Z: /fs:exfat /v:test /q /a:128k .
+
+macOS was able to natively mount exFAT partitions with cluster sizes from 512 bytes to 1024 KB, but not from 2048 KB through 32768 KB.
+
+4. Notes
+Retrieve cluster size:
+
+Windows:
+
+PS C:\> Get-Volume Z | Format-List AllocationUnitSize
+...
+AllocationUnitSize : 32768
+
+macOS:
+
+% diskutil disk2s2 | grep Allocation
+...
+Allocation Block Size: 32768 Bytes
+
+What Is the Best Allocation Unit Size for exFAT & How to Reset It:
+
+[I]f the size of the files you want to store on the drive is large, then a large cluster size is recommended, which will increase the data read-write speed. If you plan to store lots of small files, it is advisable to set a small cluster size, which can improve the disk space utilization.
+Microsoft: Default cluster size for NTFS, FAT, and exFAT (Only covers Windows XP–7, and sizes do not match those assigned by Windows 10; for example, an 8TB exFAT partition was assigned 2048 KB clusters rather than the stated 128 KB.)
+
+macOS: Can't mount exFAT External Drive
